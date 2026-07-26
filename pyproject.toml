@@ -1,0 +1,33 @@
+[project]
+name = "tp-virtual"
+version = "0.2.0"
+description = "A draggable, always-on-top desktop overlay showing live power, heart rate, cadence, and speed from TPVirtual's focus.json"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "watchdog>=6.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cycling_overlay"]

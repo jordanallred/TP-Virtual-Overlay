@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Logs
+*.log
+
+# Live/runtime data (real ride data written by TPVirtual at runtime)
+focus.json
+
+# Editor/IDE
+.idea/
+.claude/
