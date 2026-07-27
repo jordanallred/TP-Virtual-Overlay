@@ -19,26 +19,48 @@ your stats visible on top of any window.
 
 ## Requirements
 
-- Windows (uses Tkinter; TPVirtual itself is Windows-only)
+Windows only (uses Tkinter; TPVirtual itself is Windows-only).
+
+## Download (no Python required)
+
+Grab the latest `TPVirtualOverlay.exe` from the
+[Releases page](https://github.com/jordanallred/TP-Virtual-Overlay/releases/latest) —
+it's a single self-contained executable, no install, no Python.
+
+Windows SmartScreen may warn you about it since the executable isn't
+code-signed; that's expected for a small open-source tool. Click
+**More info → Run anyway** if you trust the source (or better yet, [read the
+code](cycling_overlay) and build it yourself — see below).
+
+1. Download `TPVirtualOverlay.exe`.
+2. Start TPVirtual so it's writing to its `Broadcast/focus.json` file.
+3. Double-click `TPVirtualOverlay.exe`.
+
+The window is draggable from anywhere and can be closed with the ✕ button in the
+header. There's no CLI on the packaged build, so it always runs with default
+settings (metric units, no cadence/power thresholds); see below if you want
+those options.
+
+## For developers
+
+### Requirements
+
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 
-## Installation
+### Installation
 
 ```
 uv sync
 ```
 
-## Usage
+### Usage
 
 Start TPVirtual so it's writing to its `Broadcast/focus.json` file, then run:
 
 ```
 uv run python -m cycling_overlay
 ```
-
-The window is draggable from anywhere and can be closed with the ✕ button in the
-header.
 
 ### Options
 
@@ -70,6 +92,22 @@ uv run python -m cycling_overlay.testdata
 It defaults to the same path as the overlay; pass `--output` to point it elsewhere
 and `--interval` to change how often it writes (default: 1 second).
 
+## Building the executable yourself
+
+The `.exe` on the [Releases page](https://github.com/jordanallred/TP-Virtual-Overlay/releases)
+is built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from
+[`TPVirtualOverlay.spec`](TPVirtualOverlay.spec) whenever a `vX.Y.Z` tag is pushed.
+To build the same thing locally:
+
+```
+uv sync --all-groups
+uv run pyinstaller TPVirtualOverlay.spec --noconfirm --clean
+```
+
+The resulting `dist/TPVirtualOverlay.exe` is a onefile, windowed (no console)
+build with the app icon embedded. Regenerate `assets/icon.ico` with
+`uv run python scripts/make_icon.py` if you want to change it.
+
 ## How it works
 
 TPVirtual continuously overwrites a `focus.json` file with the current rider's
@@ -81,15 +119,21 @@ time it's updated, rather than polling on a timer.
 
 ```
 cycling_overlay/
-├── __main__.py   # CLI entry point, logging setup
-├── config.py     # CLI args, runtime config, layout/unit definitions
-├── metrics.py    # Parses a focus.json rider entry and handles unit conversions
-├── watcher.py    # Debounced filesystem watcher for focus.json
-├── ui.py         # Tkinter overlay window
-└── testdata.py   # Synthetic focus.json generator for testing
+├── __main__.py       # Logging setup, main() entry point
+├── config.py         # CLI args, runtime config, layout/unit definitions
+├── metrics.py        # Parses a focus.json rider entry and handles unit conversions
+├── watcher.py        # Debounced filesystem watcher for focus.json
+├── ui.py             # Tkinter overlay window
+└── testdata.py       # Synthetic focus.json generator for testing
+run_overlay.py         # Entry script PyInstaller builds (imports cycling_overlay.__main__)
+TPVirtualOverlay.spec  # PyInstaller build spec
+assets/icon.ico        # App/window icon
+scripts/make_icon.py   # Regenerates assets/icon.ico and assets/icon.png
+.github/workflows/     # CI (lint) and release (build + publish exe on tag push)
 ```
 
 ## Logs
 
-Runtime logs are written to `cycling_overlay.log` in the project root (rotated
-automatically at 5MB, keeping 3 backups) and are not checked into git.
+Runtime logs are written to `cycling_overlay.log` under
+`%LOCALAPPDATA%\CyclingOverlay\` (rotated automatically at 5MB, keeping 3
+backups). Check there first if the overlay isn't behaving as expected.

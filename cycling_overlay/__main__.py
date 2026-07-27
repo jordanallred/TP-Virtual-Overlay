@@ -3,16 +3,34 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from .config import parse_args
 from .ui import CyclingOverlay
 
-LOG_FILE = Path(__file__).resolve().parent.parent / "cycling_overlay.log"
+
+def _log_dir() -> Path:
+    """A stable, user-writable directory for log output.
+
+    Deliberately independent of `__file__`/`sys.executable` location: under a
+    PyInstaller onefile build the app runs from a temp extraction directory,
+    and the install directory itself may not be writable.
+    """
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+    else:
+        base = Path.home() / ".local" / "share"
+    return base / "CyclingOverlay"
+
+
+LOG_FILE = _log_dir() / "cycling_overlay.log"
 
 
 def setup_logging() -> None:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 

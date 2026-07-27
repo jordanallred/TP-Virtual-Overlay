@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import tkinter as tk
+from pathlib import Path
 from typing import Any
 
 from .config import LAYOUT, UNITS, OverlayConfig
@@ -12,6 +14,8 @@ from .metrics import RiderMetrics
 from .watcher import FocusFileWatcher
 
 logger = logging.getLogger(__name__)
+
+ICON_PATH = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "assets" / "icon.ico"
 
 ALERT_COLOR = "#ff3838"
 DEFAULT_TEXT_COLOR = "#ffffff"
@@ -25,7 +29,7 @@ TEXT_DIM = "#9090a0"
 
 CARD_RADIUS = 16
 CARD_INSET = 5
-CARD_HEIGHT = 110
+CARD_HEIGHT = 134
 GRAPH_RADIUS = 12
 
 
@@ -95,11 +99,17 @@ class CyclingOverlay:
 
     def setup_window(self) -> None:
         self.root.title("Cycling Stats")
-        self.root.geometry("480x800+100+100")
+        self.root.geometry("480x890+100+100")
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.7)
         self.root.configure(bg="#000000")
         self.root.overrideredirect(True)
+
+        if ICON_PATH.exists():
+            try:
+                self.root.iconbitmap(default=str(ICON_PATH))
+            except tk.TclError:
+                logger.warning("Could not set window icon from %s", ICON_PATH)
 
         self.root.bind("<Button-1>", self.start_drag)
         self.root.bind("<B1-Motion>", self.drag_window)
