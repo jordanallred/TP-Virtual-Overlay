@@ -5,7 +5,7 @@ heart rate, cadence, speed, distance, TSS, and calories — read from
 [TPVirtual](https://www.tpvirtual.com/)'s `focus.json` broadcast file. Useful for
 streaming or recording indoor rides with your stats visible on top of any window.
 
-![Cycling overlay screenshot](Screenshot_2025-10-14_072013.png)
+![Cycling overlay screenshot](screenshot.png)
 
 ## Features
 
