@@ -2,8 +2,9 @@
 
 A draggable, always-on-top desktop overlay that displays live ride data — power,
 heart rate, cadence, speed, distance, TSS, and calories — read from
-[TPVirtual](https://www.tpvirtual.com/)'s `focus.json` broadcast file. Useful for
-streaming or recording indoor rides with your stats visible on top of any window.
+[TrainingPeaks Virtual (TPVirtual)](https://www.trainingpeaks.com/virtual/#download)'s
+`focus.json` broadcast file. Useful for streaming or recording indoor rides with
+your stats visible on top of any window.
 
 ![Cycling overlay screenshot](screenshot.png)
 
