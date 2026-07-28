@@ -26,12 +26,10 @@ jobs:
         run: uv run pyinstaller TPVirtualOverlay.spec --noconfirm --clean
 
       - name: Build installer
-        shell: bash
+        shell: pwsh
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" \
-            "/DMyAppVersion=${version}" \
-            installer\TPVirtualOverlay.iss
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "installer\TPVirtualOverlay.iss"
 
       - name: Create GitHub release
         shell: bash
