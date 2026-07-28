@@ -82,6 +82,89 @@ def _blend(fg_hex: str, bg_hex: str, factor: float) -> str:
     return f"#{mixed[0]:02x}{mixed[1]:02x}{mixed[2]:02x}"
 
 
+class _Toggle:
+    """A small rounded on/off switch, canvas-drawn to match the overlay's look
+    instead of a native checkbutton."""
+
+    WIDTH, HEIGHT = 40, 22
+
+    def __init__(self, parent: tk.Widget, value: bool, on_color: str = "#2ee6a8") -> None:
+        self.value = value
+        self._on_color = on_color
+        self.canvas = tk.Canvas(
+            parent, width=self.WIDTH, height=self.HEIGHT, bg=BG_CARD,
+            highlightthickness=0, bd=0, cursor="hand2",
+        )
+        self.canvas.bind("<Button-1>", self._on_click)
+        self._draw()
+
+    def _on_click(self, _event: tk.Event) -> None:
+        self.value = not self.value
+        self._draw()
+
+    def _draw(self) -> None:
+        self.canvas.delete("all")
+        color = self._on_color if self.value else BORDER_DIM
+        _draw_rounded_rect(
+            self.canvas, 1, 1, self.WIDTH - 1, self.HEIGHT - 1, self.HEIGHT // 2 - 1,
+            fill=color, outline="",
+        )
+        knob_x = self.WIDTH - self.HEIGHT // 2 if self.value else self.HEIGHT // 2
+        self.canvas.create_oval(
+            knob_x - 8, self.HEIGHT // 2 - 8, knob_x + 8, self.HEIGHT // 2 + 8,
+            fill="#ffffff", outline="",
+        )
+
+
+class _Slider:
+    """A rounded, canvas-drawn horizontal slider to match the overlay's look
+    instead of a native (Windows-themed) ttk/tk Scale."""
+
+    def __init__(
+        self, parent: tk.Widget, minimum: float, maximum: float, value: float,
+        color: str = "#4cc9f0", height: int = 26,
+    ) -> None:
+        self.minimum = minimum
+        self.maximum = maximum
+        self.value = max(minimum, min(maximum, value))
+        self._color = color
+        self.canvas = tk.Canvas(
+            parent, height=height, bg=BG_CARD, highlightthickness=0, bd=0, cursor="hand2",
+        )
+        self.canvas.bind("<Configure>", lambda _e: self._draw())
+        self.canvas.bind("<Button-1>", self._on_drag)
+        self.canvas.bind("<B1-Motion>", self._on_drag)
+
+    def _track_bounds(self) -> tuple[float, float]:
+        pad = 12
+        width = self.canvas.winfo_width()
+        return pad, max(width - pad, pad + 1)
+
+    def _on_drag(self, event: tk.Event) -> None:
+        x0, x1 = self._track_bounds()
+        fraction = max(0.0, min(1.0, (event.x - x0) / (x1 - x0)))
+        self.value = self.minimum + fraction * (self.maximum - self.minimum)
+        self._draw()
+
+    def _draw(self) -> None:
+        self.canvas.delete("all")
+        width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
+        if width <= 1:
+            return
+        x0, x1 = self._track_bounds()
+        mid_y = height / 2
+        _draw_rounded_rect(self.canvas, x0, mid_y - 3, x1, mid_y + 3, 3, fill=BORDER_DIM, outline="")
+        fraction = (self.value - self.minimum) / (self.maximum - self.minimum)
+        handle_x = x0 + fraction * (x1 - x0)
+        if handle_x > x0:
+            _draw_rounded_rect(
+                self.canvas, x0, mid_y - 3, handle_x, mid_y + 3, 3, fill=self._color, outline="",
+            )
+        self.canvas.create_oval(
+            handle_x - 8, mid_y - 8, handle_x + 8, mid_y + 8, fill=self._color, outline="",
+        )
+
+
 class CyclingOverlay:
     def __init__(self, config: OverlayConfig) -> None:
         logger.info("Initializing CyclingOverlay")
@@ -550,51 +633,97 @@ class CyclingOverlay:
 
     def open_settings_dialog(self) -> None:
         dialog = tk.Toplevel(self.root)
-        dialog.title("Settings")
+        dialog.overrideredirect(True)
         dialog.configure(bg=BG_OUTER)
-        dialog.resizable(False, False)
         dialog.attributes("-topmost", True)
         dialog.transient(self.root)
         dialog.geometry(f"+{self.root.winfo_x() + 40}+{self.root.winfo_y() + 40}")
 
+        outer = tk.Frame(dialog, bg=BG_OUTER)
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
+
+        header = tk.Frame(outer, bg=BG_HEADER, height=36, width=340)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Frame(header, bg="#4cc9f0", height=2).pack(fill="x", side="bottom")
+
+        tk.Label(
+            header, text="⚙ SETTINGS", bg=BG_HEADER, fg="#ffffff", font=("Segoe UI", 10, "bold"),
+        ).pack(side="left", padx=12, pady=8)
+        close_btn = tk.Button(
+            header, text="✕", bg="#3a3a3a", fg="#aaaaaa", command=dialog.destroy,
+            font=("Segoe UI", 9, "bold"), width=3, height=1, bd=0, relief="flat",
+            activebackground="#ff4757", activeforeground="white",
+        )
+        close_btn.pack(side="right", padx=8, pady=6)
+
+        def _start_drag(event: tk.Event) -> None:
+            dialog._drag_x = event.x_root - dialog.winfo_x()
+            dialog._drag_y = event.y_root - dialog.winfo_y()
+
+        def _drag(event: tk.Event) -> None:
+            dialog.geometry(f"+{event.x_root - dialog._drag_x}+{event.y_root - dialog._drag_y}")
+
+        header.bind("<Button-1>", _start_drag)
+        header.bind("<B1-Motion>", _drag)
+
+        content = tk.Frame(outer, bg=BG_OUTER, width=340)
+        content.pack(fill="both", expand=True)
+
         entry_kwargs = {
             "bg": BG_CARD, "fg": "#ffffff", "insertbackground": "#ffffff",
-            "relief": "flat", "font": ("Segoe UI", 10),
+            "relief": "flat", "bd": 0, "font": ("Consolas", 10),
+            "highlightthickness": 1, "highlightbackground": BORDER_DIM, "highlightcolor": "#4cc9f0",
         }
 
         def add_label(text: str, top_pad: int = 10) -> None:
-            tk.Label(dialog, text=text, bg=BG_OUTER, fg=TEXT_MUTED,
+            tk.Label(content, text=text, bg=BG_OUTER, fg=TEXT_MUTED,
                       font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16, pady=(top_pad, 0))
 
-        add_label("MIN CADENCE THRESHOLD (RPM, BLANK = OFF)", top_pad=14)
+        def add_row(label: str, control_builder, top_pad: int = 14) -> object:
+            add_label(label, top_pad=top_pad)
+            row = tk.Frame(content, bg=BG_OUTER)
+            row.pack(fill="x", padx=16, pady=(4, 0))
+            return control_builder(row)
+
         cadence_var = tk.StringVar(value=str(self.min_cadence) if self.min_cadence else "")
-        tk.Entry(dialog, textvariable=cadence_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+        add_row(
+            "MIN CADENCE THRESHOLD (RPM, BLANK = OFF)",
+            lambda row: tk.Entry(row, textvariable=cadence_var, **entry_kwargs).pack(fill="x", ipady=4),
+            top_pad=16,
+        )
 
-        add_label("MIN POWER THRESHOLD (W, BLANK = OFF)")
         power_var = tk.StringVar(value=str(self.min_power) if self.min_power else "")
-        tk.Entry(dialog, textvariable=power_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+        add_row(
+            "MIN POWER THRESHOLD (W, BLANK = OFF)",
+            lambda row: tk.Entry(row, textvariable=power_var, **entry_kwargs).pack(fill="x", ipady=4),
+        )
 
-        add_label("GRAPH WINDOW (SECONDS)")
         duration_var = tk.StringVar(value=str(self.max_history_points))
-        tk.Entry(dialog, textvariable=duration_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+        add_row(
+            "GRAPH WINDOW (SECONDS)",
+            lambda row: tk.Entry(row, textvariable=duration_var, **entry_kwargs).pack(fill="x", ipady=4),
+        )
 
-        add_label("OPACITY")
-        opacity_var = tk.DoubleVar(value=float(self.root.attributes("-alpha")))
-        tk.Scale(
-            dialog, from_=0.2, to=1.0, resolution=0.05, orient="horizontal", variable=opacity_var,
-            bg=BG_OUTER, fg="#ffffff", troughcolor=BG_CARD, highlightthickness=0, bd=0,
-            font=("Segoe UI", 8),
-        ).pack(fill="x", padx=12, pady=(2, 0))
+        current_opacity = float(self.root.attributes("-alpha"))
+        opacity_slider: _Slider = add_row(
+            "OPACITY",
+            lambda row: _Slider(row, 0.2, 1.0, current_opacity),
+        )
+        opacity_slider.canvas.pack(fill="x")
 
-        hide_units_var = tk.BooleanVar(value=self.hide_units)
-        tk.Checkbutton(
-            dialog, text="Hide unit labels", variable=hide_units_var, bg=BG_OUTER, fg="#ffffff",
-            selectcolor=BG_CARD, activebackground=BG_OUTER, activeforeground="#ffffff",
-            font=("Segoe UI", 9),
-        ).pack(anchor="w", padx=16, pady=(14, 0))
+        hide_units_row = tk.Frame(content, bg=BG_OUTER)
+        hide_units_row.pack(fill="x", padx=16, pady=(18, 0))
+        tk.Label(
+            hide_units_row, text="HIDE UNIT LABELS", bg=BG_OUTER, fg=TEXT_MUTED,
+            font=("Segoe UI", 8, "bold"),
+        ).pack(side="left")
+        hide_units_toggle = _Toggle(hide_units_row, self.hide_units)
+        hide_units_toggle.canvas.pack(side="right")
 
-        error_label = tk.Label(dialog, text="", bg=BG_OUTER, fg=ALERT_COLOR, font=("Segoe UI", 8))
-        error_label.pack(anchor="w", padx=16, pady=(6, 0))
+        error_label = tk.Label(content, text="", bg=BG_OUTER, fg=ALERT_COLOR,
+                                font=("Segoe UI", 8), wraplength=310, justify="left")
+        error_label.pack(anchor="w", padx=16, pady=(10, 0))
 
         def on_save() -> None:
             try:
@@ -609,9 +738,9 @@ class CyclingOverlay:
 
             self.min_cadence = min_cadence
             self.min_power = min_power
-            self.hide_units = hide_units_var.get()
+            self.hide_units = hide_units_toggle.value
 
-            opacity = round(opacity_var.get(), 2)
+            opacity = round(opacity_slider.value, 2)
             self.root.attributes("-alpha", opacity)
 
             if window_duration != self.max_history_points:
@@ -633,7 +762,7 @@ class CyclingOverlay:
             self.update_data()
             dialog.destroy()
 
-        button_row = tk.Frame(dialog, bg=BG_OUTER)
+        button_row = tk.Frame(content, bg=BG_OUTER)
         button_row.pack(fill="x", padx=16, pady=16)
         tk.Button(
             button_row, text="Cancel", command=dialog.destroy, bg="#2c3e50", fg="#ffffff",
@@ -643,6 +772,10 @@ class CyclingOverlay:
             button_row, text="Save", command=on_save, bg="#2ee6a8", fg="#0a0a0a",
             bd=0, relief="flat", font=("Segoe UI", 9, "bold"), padx=10,
         ).pack(side="right")
+
+        dialog.update_idletasks()
+        dialog_x, dialog_y = dialog.winfo_x(), dialog.winfo_y()
+        dialog.geometry(f"340x{dialog.winfo_reqheight()}+{dialog_x}+{dialog_y}")
 
         dialog.grab_set()
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+- The Settings dialog now matches the main overlay's look instead of a
+  default native Windows dialog: borderless dark themed window with its own
+  header/close button, and canvas-drawn toggle switch and slider replacing
+  the native checkbox and Windows-themed scale control.
+
 ## 0.4.0
 
 ### Added

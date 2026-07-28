@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tp-virtual"
-version = "0.4.0"
+version = "0.4.1"
 description = "A draggable, always-on-top desktop overlay showing live power, heart rate, cadence, and speed from TPVirtual's focus.json"
 readme = "README.md"
 license = "MIT"
