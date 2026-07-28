@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import time
 import tkinter as tk
 from pathlib import Path
 from typing import Any
 
 from .config import LAYOUT, UNITS, OverlayConfig
 from .metrics import RiderMetrics
+from .settings import save_settings
+from .tray import TrayIcon
 from .watcher import FocusFileWatcher
 
 logger = logging.getLogger(__name__)
@@ -19,6 +22,10 @@ ICON_PATH = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent
 
 ALERT_COLOR = "#ff3838"
 DEFAULT_TEXT_COLOR = "#ffffff"
+
+# Tabular-figure font for numbers that update every tick, so the digit width
+# stays fixed and values don't jitter side to side as the digit count changes.
+MONO_FONT = "Consolas"
 
 BG_OUTER = "#0a0a0a"
 BG_HEADER = "#15151f"
@@ -31,6 +38,16 @@ CARD_RADIUS = 16
 CARD_INSET = 5
 CARD_HEIGHT = 134
 GRAPH_RADIUS = 12
+
+BASE_WINDOW_WIDTH = 480
+BASE_WINDOW_HEIGHT = 890
+DEFAULT_WINDOW_X = 100
+DEFAULT_WINDOW_Y = 100
+
+STALE_AFTER_SECONDS = 5.0
+LIVE_COLOR = "#2ee6a8"
+STALE_COLOR = "#83839a"
+STALENESS_CHECK_MS = 1000
 
 
 def _rounded_rect_points(x1: float, y1: float, x2: float, y2: float, radius: float) -> list[float]:
@@ -80,12 +97,27 @@ class CyclingOverlay:
         self.power_history: list[float] = []
         self.max_history_points = config.window_duration
 
+        self._last_update_monotonic: float | None = None
+        self._is_stale = False
+        self._hidden = False
+
         self.root = tk.Tk()
         self.setup_window()
         self.create_widgets()
 
         self.watcher = FocusFileWatcher(config.focus_file, self.schedule_update)
         self.watcher.start()
+
+        self.tray = TrayIcon(
+            icon_path=ICON_PATH,
+            on_show_hide=lambda icon, item: self.root.after(0, self.toggle_visibility),
+            on_reset_position=lambda icon, item: self.root.after(0, self.reset_position),
+            on_quit=lambda icon, item: self.root.after(0, self.close),
+        )
+        if ICON_PATH.exists():
+            self.tray.start()
+        else:
+            logger.warning("Icon missing, skipping system tray: %s", ICON_PATH)
 
         # Variables for dragging
         self.start_x = 0
@@ -95,13 +127,25 @@ class CyclingOverlay:
         # canvases report a 1x1 size (unmapped placeholder) and draw nothing.
         self.root.update_idletasks()
         self.update_data()
+        self._check_staleness()
         logger.info("CyclingOverlay initialization complete")
 
     def setup_window(self) -> None:
         self.root.title("Cycling Stats")
-        self.root.geometry("480x890+100+100")
+
+        # winfo_fpixels("1i") reflects the monitor's real DPI once the process
+        # has declared DPI awareness (see __main__._set_dpi_awareness); scaling
+        # our base pixel geometry by it keeps the window's physical on-screen
+        # size consistent across monitors instead of shrinking on scaled ones.
+        dpi_scale = self.root.winfo_fpixels("1i") / 96.0
+        width = round(BASE_WINDOW_WIDTH * dpi_scale)
+        height = round(BASE_WINDOW_HEIGHT * dpi_scale)
+        x = self.config.window_x if self.config.window_x is not None else DEFAULT_WINDOW_X
+        y = self.config.window_y if self.config.window_y is not None else DEFAULT_WINDOW_Y
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+
         self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", 0.7)
+        self.root.attributes("-alpha", self.config.opacity)
         self.root.configure(bg="#000000")
         self.root.overrideredirect(True)
 
@@ -113,6 +157,7 @@ class CyclingOverlay:
 
         self.root.bind("<Button-1>", self.start_drag)
         self.root.bind("<B1-Motion>", self.drag_window)
+        self.root.bind("<ButtonRelease-1>", self.end_drag)
 
     def create_widgets(self) -> None:
         main_frame = tk.Frame(self.root, bg=BG_OUTER, relief="flat", bd=0)
@@ -131,6 +176,12 @@ class CyclingOverlay:
         )
         title_label.pack(side="left", padx=12, pady=8)
 
+        self.status_label = tk.Label(
+            header_frame, text="● LIVE", bg=BG_HEADER, fg=LIVE_COLOR,
+            font=("Segoe UI", 8, "bold"),
+        )
+        self.status_label.pack(side="left", padx=(0, 12), pady=8)
+
         units_text = "Imperial" if self.imperial else "Metric"
         self.units_button = tk.Button(
             header_frame, text=units_text, bg="#2c3e50", fg="white",
@@ -148,9 +199,18 @@ class CyclingOverlay:
         )
         close_button.pack(side="right", padx=8, pady=6)
 
+        settings_button = tk.Button(
+            header_frame, text="⚙", bg="#2c3e50", fg="white",
+            command=self.open_settings_dialog, font=("Segoe UI", 10, "bold"),
+            width=3, height=1, bd=0, relief="flat",
+            activebackground="#34495e", activeforeground="white",
+        )
+        settings_button.pack(side="right", padx=4, pady=6)
+
         for widget in (header_frame, title_label):
             widget.bind("<Button-1>", self.start_drag)
             widget.bind("<B1-Motion>", self.drag_window)
+            widget.bind("<ButtonRelease-1>", self.end_drag)
 
         stats_container = tk.Frame(main_frame, bg=BG_OUTER)
         stats_container.pack(fill="x", expand=False)
@@ -211,7 +271,7 @@ class CyclingOverlay:
         title_label.pack(side="left", padx=(6 if icon else 0, 0))
 
         value_label = tk.Label(content, text=value, bg=BG_CARD, fg=color,
-                                font=("Segoe UI", 21, "bold"))
+                                font=(MONO_FONT, 21, "bold"))
         value_label.pack(pady=(3, 1))
 
         avg_label = tk.Label(content, text="", bg=BG_CARD, fg=TEXT_DIM,
@@ -319,7 +379,7 @@ class CyclingOverlay:
             badge_x1 = badge_x2 - badge_w
             _draw_rounded_rect(canvas, badge_x1, 4, badge_x2, 20, 7, fill=color, outline="")
             canvas.create_text((badge_x1 + badge_x2) / 2, 12, text=badge_text,
-                                fill=BG_CARD, font=("Segoe UI", 9, "bold"), anchor="center")
+                                fill=BG_CARD, font=(MONO_FONT, 9, "bold"), anchor="center")
 
             canvas.create_text(plot_left, height - 5, text=f"min {int(min_value)} / max {int(max_value)}",
                                 fill=TEXT_MUTED, font=("Segoe UI", 7), anchor="sw")
@@ -343,9 +403,34 @@ class CyclingOverlay:
         y = event.y_root - self.start_y
         self.root.geometry(f"+{x}+{y}")
 
+    def end_drag(self, _event: tk.Event) -> None:
+        save_settings({"window_x": self.root.winfo_x(), "window_y": self.root.winfo_y()})
+
     def schedule_update(self) -> None:
         """Schedule a UI update on the main thread (called from the watcher thread)."""
         self.root.after(0, self.update_data)
+
+    def _check_staleness(self) -> None:
+        """Flip the header's LIVE/NO DATA indicator based on how long it's been
+        since the last successful read.
+
+        Runs on its own timer independent of file-change events: if TPVirtual
+        stops writing entirely (closed, crashed, ride ended), no watcher event
+        ever fires again, so nothing else would ever notice the data went stale.
+        """
+        if self._last_update_monotonic is None:
+            is_stale = True
+        else:
+            is_stale = (time.monotonic() - self._last_update_monotonic) > STALE_AFTER_SECONDS
+
+        if is_stale != self._is_stale:
+            self._is_stale = is_stale
+            if is_stale:
+                self.status_label.config(text="● NO DATA", fg=STALE_COLOR)
+            else:
+                self.status_label.config(text="● LIVE", fg=LIVE_COLOR)
+
+        self.root.after(STALENESS_CHECK_MS, self._check_staleness)
 
     def update_data(self) -> None:
         focus_file = self.config.focus_file
@@ -370,6 +455,8 @@ class CyclingOverlay:
             logger.exception("Failed to read focus.json")
 
     def update_display(self, metrics: RiderMetrics) -> None:
+        self._last_update_monotonic = time.monotonic()
+
         self.power_history.append(metrics.power)
         self.hr_history.append(metrics.heartrate)
         if len(self.power_history) > self.max_history_points:
@@ -458,9 +545,127 @@ class CyclingOverlay:
         units_text = "Imperial" if self.imperial else "Metric"
         self.units_button.config(text=units_text)
         logger.info("Units toggled to: %s", units_text)
+        save_settings({"imperial": self.imperial})
         self.update_data()
 
+    def open_settings_dialog(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Settings")
+        dialog.configure(bg=BG_OUTER)
+        dialog.resizable(False, False)
+        dialog.attributes("-topmost", True)
+        dialog.transient(self.root)
+        dialog.geometry(f"+{self.root.winfo_x() + 40}+{self.root.winfo_y() + 40}")
+
+        entry_kwargs = {
+            "bg": BG_CARD, "fg": "#ffffff", "insertbackground": "#ffffff",
+            "relief": "flat", "font": ("Segoe UI", 10),
+        }
+
+        def add_label(text: str, top_pad: int = 10) -> None:
+            tk.Label(dialog, text=text, bg=BG_OUTER, fg=TEXT_MUTED,
+                      font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16, pady=(top_pad, 0))
+
+        add_label("MIN CADENCE THRESHOLD (RPM, BLANK = OFF)", top_pad=14)
+        cadence_var = tk.StringVar(value=str(self.min_cadence) if self.min_cadence else "")
+        tk.Entry(dialog, textvariable=cadence_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+
+        add_label("MIN POWER THRESHOLD (W, BLANK = OFF)")
+        power_var = tk.StringVar(value=str(self.min_power) if self.min_power else "")
+        tk.Entry(dialog, textvariable=power_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+
+        add_label("GRAPH WINDOW (SECONDS)")
+        duration_var = tk.StringVar(value=str(self.max_history_points))
+        tk.Entry(dialog, textvariable=duration_var, **entry_kwargs).pack(fill="x", padx=16, pady=(2, 0))
+
+        add_label("OPACITY")
+        opacity_var = tk.DoubleVar(value=float(self.root.attributes("-alpha")))
+        tk.Scale(
+            dialog, from_=0.2, to=1.0, resolution=0.05, orient="horizontal", variable=opacity_var,
+            bg=BG_OUTER, fg="#ffffff", troughcolor=BG_CARD, highlightthickness=0, bd=0,
+            font=("Segoe UI", 8),
+        ).pack(fill="x", padx=12, pady=(2, 0))
+
+        hide_units_var = tk.BooleanVar(value=self.hide_units)
+        tk.Checkbutton(
+            dialog, text="Hide unit labels", variable=hide_units_var, bg=BG_OUTER, fg="#ffffff",
+            selectcolor=BG_CARD, activebackground=BG_OUTER, activeforeground="#ffffff",
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", padx=16, pady=(14, 0))
+
+        error_label = tk.Label(dialog, text="", bg=BG_OUTER, fg=ALERT_COLOR, font=("Segoe UI", 8))
+        error_label.pack(anchor="w", padx=16, pady=(6, 0))
+
+        def on_save() -> None:
+            try:
+                min_cadence = int(cadence_var.get()) if cadence_var.get().strip() else None
+                min_power = int(power_var.get()) if power_var.get().strip() else None
+                window_duration = int(duration_var.get())
+                if window_duration <= 0:
+                    raise ValueError("window_duration must be positive")
+            except ValueError:
+                error_label.config(text="Thresholds and window must be whole numbers (blank = off).")
+                return
+
+            self.min_cadence = min_cadence
+            self.min_power = min_power
+            self.hide_units = hide_units_var.get()
+
+            opacity = round(opacity_var.get(), 2)
+            self.root.attributes("-alpha", opacity)
+
+            if window_duration != self.max_history_points:
+                self.max_history_points = window_duration
+                self.power_history = self.power_history[-window_duration:]
+                self.hr_history = self.hr_history[-window_duration:]
+
+            save_settings({
+                "min_cadence": self.min_cadence,
+                "min_power": self.min_power,
+                "hide_units": self.hide_units,
+                "window_duration": self.max_history_points,
+                "opacity": opacity,
+            })
+            logger.info(
+                "Settings updated: min_cadence=%s min_power=%s hide_units=%s window_duration=%s opacity=%s",
+                self.min_cadence, self.min_power, self.hide_units, self.max_history_points, opacity,
+            )
+            self.update_data()
+            dialog.destroy()
+
+        button_row = tk.Frame(dialog, bg=BG_OUTER)
+        button_row.pack(fill="x", padx=16, pady=16)
+        tk.Button(
+            button_row, text="Cancel", command=dialog.destroy, bg="#2c3e50", fg="#ffffff",
+            bd=0, relief="flat", font=("Segoe UI", 9, "bold"), padx=10,
+        ).pack(side="right", padx=(8, 0))
+        tk.Button(
+            button_row, text="Save", command=on_save, bg="#2ee6a8", fg="#0a0a0a",
+            bd=0, relief="flat", font=("Segoe UI", 9, "bold"), padx=10,
+        ).pack(side="right")
+
+        dialog.grab_set()
+
+    def toggle_visibility(self) -> None:
+        if self._hidden:
+            self.root.deiconify()
+            self.root.attributes("-topmost", True)
+            self._hidden = False
+            logger.info("Overlay shown from tray")
+        else:
+            self.root.withdraw()
+            self._hidden = True
+            logger.info("Overlay hidden to tray")
+
+    def reset_position(self) -> None:
+        self.root.geometry(f"+{DEFAULT_WINDOW_X}+{DEFAULT_WINDOW_Y}")
+        save_settings({"window_x": DEFAULT_WINDOW_X, "window_y": DEFAULT_WINDOW_Y})
+        logger.info("Overlay position reset to default")
+        if self._hidden:
+            self.toggle_visibility()
+
     def close(self) -> None:
+        self.tray.stop()
         self.root.quit()
 
     def run(self) -> None:

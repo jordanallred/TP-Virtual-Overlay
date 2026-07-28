@@ -1,19 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "tp-virtual"
-version = "0.3.0"
+version = "0.4.0"
 description = "A draggable, always-on-top desktop overlay showing live power, heart rate, cadence, and speed from TPVirtual's focus.json"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "watchdog>=6.0.0",
+    "pystray>=0.19.5",
+    "pillow>=11.0.0",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.8.0",
-    "pillow>=11.0.0",
     "pyinstaller>=6.11.0",
+    "pytest>=8.3.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cycling_overlay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110

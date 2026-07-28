@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .settings import load_settings
+
 DEFAULT_FOCUS_FILE = Path.home() / "Documents" / "TPVirtual" / "Broadcast" / "focus.json"
 DEFAULT_WINDOW_DURATION = 300  # seconds of history kept for the graphs
+DEFAULT_OPACITY = 0.7
 
 
 @dataclass(frozen=True)
@@ -19,18 +22,31 @@ class OverlayConfig:
     imperial: bool = False
     hide_units: bool = False
     window_duration: int = DEFAULT_WINDOW_DURATION
+    opacity: float = DEFAULT_OPACITY
+    window_x: int | None = None
+    window_y: int | None = None
 
 
 def parse_args(argv: list[str] | None = None) -> OverlayConfig:
+    """Build the runtime config from persisted settings, overridden by any CLI flags given.
+
+    Precedence: explicit CLI flag > value saved from a previous run (settings.json,
+    written by the in-app Settings dialog / window drag) > built-in default. The
+    packaged .exe is normally launched with no arguments at all, so it relies
+    entirely on the saved settings; CLI flags exist for developers running from
+    source.
+    """
     parser = argparse.ArgumentParser(description="Cycling Stats Overlay")
     parser.add_argument(
         "--focus-file",
         type=Path,
-        default=DEFAULT_FOCUS_FILE,
+        default=None,
         help=f"Path to TPVirtual's focus.json (default: {DEFAULT_FOCUS_FILE})",
     )
-    parser.add_argument("--min-cadence", type=int, help="Minimum cadence threshold (shows red if below)")
-    parser.add_argument("--min-power", type=int, help="Minimum power threshold (shows red if below)")
+    parser.add_argument("--min-cadence", type=int, default=None,
+                         help="Minimum cadence threshold (shows red if below)")
+    parser.add_argument("--min-power", type=int, default=None,
+                         help="Minimum power threshold (shows red if below)")
     parser.add_argument(
         "--imperial",
         action="store_true",
@@ -40,18 +56,31 @@ def parse_args(argv: list[str] | None = None) -> OverlayConfig:
     parser.add_argument(
         "--window-duration",
         type=int,
-        default=DEFAULT_WINDOW_DURATION,
+        default=None,
         help=f"Sliding window duration in seconds for the graphs (default: {DEFAULT_WINDOW_DURATION})",
     )
+    parser.add_argument(
+        "--opacity",
+        type=float,
+        default=None,
+        help=f"Window opacity from 0.1 (near-invisible) to 1.0 (opaque) (default: {DEFAULT_OPACITY})",
+    )
     args = parser.parse_args(argv)
+    saved = load_settings()
 
     return OverlayConfig(
-        focus_file=args.focus_file,
-        min_cadence=args.min_cadence,
-        min_power=args.min_power,
-        imperial=args.imperial,
-        hide_units=args.hide_units,
-        window_duration=args.window_duration,
+        focus_file=args.focus_file or DEFAULT_FOCUS_FILE,
+        min_cadence=args.min_cadence if args.min_cadence is not None else saved.get("min_cadence"),
+        min_power=args.min_power if args.min_power is not None else saved.get("min_power"),
+        imperial=args.imperial or bool(saved.get("imperial", False)),
+        hide_units=args.hide_units or bool(saved.get("hide_units", False)),
+        window_duration=(
+            args.window_duration if args.window_duration is not None
+            else saved.get("window_duration", DEFAULT_WINDOW_DURATION)
+        ),
+        opacity=args.opacity if args.opacity is not None else saved.get("opacity", DEFAULT_OPACITY),
+        window_x=saved.get("window_x"),
+        window_y=saved.get("window_y"),
     )
 
 

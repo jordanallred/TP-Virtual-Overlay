@@ -3,30 +3,48 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from .config import parse_args
+from .paths import app_data_dir
 from .ui import CyclingOverlay
 
+LOG_FILE = app_data_dir() / "cycling_overlay.log"
 
-def _log_dir() -> Path:
-    """A stable, user-writable directory for log output.
 
-    Deliberately independent of `__file__`/`sys.executable` location: under a
-    PyInstaller onefile build the app runs from a temp extraction directory,
-    and the install directory itself may not be writable.
+def _set_dpi_awareness() -> None:
+    """Opt the process into per-monitor DPI awareness.
+
+    Must run before the Tk root window is created. Without this, Windows
+    bitmap-stretches the (DPI-unaware) window to the right physical size on
+    scaled displays, which is what makes text and shapes look blurry on any
+    monitor running above 100% scaling.
     """
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
-    else:
-        base = Path.home() / ".local" / "share"
-    return base / "CyclingOverlay"
+    if sys.platform != "win32":
+        return
 
+    import ctypes
 
-LOG_FILE = _log_dir() / "cycling_overlay.log"
+    try:
+        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (Windows 10 1703+).
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        return
+    except (AttributeError, OSError):
+        pass
+
+    try:
+        # PROCESS_PER_MONITOR_DPI_AWARE (Windows 8.1+).
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except (AttributeError, OSError):
+        pass
+
+    try:
+        # System DPI aware (Vista+); better than nothing on very old Windows.
+        ctypes.windll.user32.SetProcessDPIAware()
+    except (AttributeError, OSError):
+        logging.getLogger(__name__).warning("Could not set process DPI awareness")
 
 
 def setup_logging() -> None:
@@ -52,6 +70,8 @@ def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Starting cycling overlay")
+
+    _set_dpi_awareness()
 
     config = parse_args()
     logger.info(
