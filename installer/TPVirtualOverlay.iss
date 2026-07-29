@@ -14,7 +14,7 @@
 ; CI passes the real released version via `iscc /DMyAppVersion=X.Y.Z ...`;
 ; this is just a fallback so a plain local `iscc` invocation still works.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.4.1"
+  #define MyAppVersion "0.4.2"
 #endif
 #define MyAppPublisher "Jordan Allred"
 #define MyAppURL "https://github.com/jordanallred/TP-Virtual-Overlay"

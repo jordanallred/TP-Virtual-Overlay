@@ -1,3 +1,3 @@
 """A draggable, always-on-top overlay showing live TPVirtual ride data."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"

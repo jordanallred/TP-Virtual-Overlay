@@ -777,6 +777,13 @@ class CyclingOverlay:
         dialog_x, dialog_y = dialog.winfo_x(), dialog.winfo_y()
         dialog.geometry(f"340x{dialog.winfo_reqheight()}+{dialog_x}+{dialog_y}")
 
+        # Both windows are overrideredirect + topmost, so without an explicit
+        # raise/focus the new dialog can end up stacked *below* the main
+        # window with input focus stuck on neither -- grab_set() then blocks
+        # clicks on the main window while the (unfocused, unraised) dialog
+        # never gets them either, wedging the whole app.
+        dialog.lift()
+        dialog.focus_force()
         dialog.grab_set()
 
     def toggle_visibility(self) -> None:

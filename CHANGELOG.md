@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+### Fixed
+- Opening the Settings dialog could leave the app completely unresponsive:
+  both it and the main window are borderless/always-on-top, so without an
+  explicit raise + focus the dialog could end up stacked behind the main
+  window while owning the input grab, leaving nothing clickable. The dialog
+  now explicitly raises and focuses itself before grabbing input.
+
 ## 0.4.1
 
 ### Fixed
