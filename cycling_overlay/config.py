@@ -10,7 +10,6 @@ from typing import Any
 from .settings import load_settings
 
 DEFAULT_FOCUS_FILE = Path.home() / "Documents" / "TPVirtual" / "Broadcast" / "focus.json"
-DEFAULT_WINDOW_DURATION = 300  # seconds of history kept for the graphs
 DEFAULT_OPACITY = 0.7
 
 
@@ -21,7 +20,6 @@ class OverlayConfig:
     min_power: int | None = None
     imperial: bool = False
     hide_units: bool = False
-    window_duration: int = DEFAULT_WINDOW_DURATION
     opacity: float = DEFAULT_OPACITY
     window_x: int | None = None
     window_y: int | None = None
@@ -54,12 +52,6 @@ def parse_args(argv: list[str] | None = None) -> OverlayConfig:
     )
     parser.add_argument("--hide-units", action="store_true", help="Hide unit labels from display values")
     parser.add_argument(
-        "--window-duration",
-        type=int,
-        default=None,
-        help=f"Sliding window duration in seconds for the graphs (default: {DEFAULT_WINDOW_DURATION})",
-    )
-    parser.add_argument(
         "--opacity",
         type=float,
         default=None,
@@ -74,10 +66,6 @@ def parse_args(argv: list[str] | None = None) -> OverlayConfig:
         min_power=args.min_power if args.min_power is not None else saved.get("min_power"),
         imperial=args.imperial or bool(saved.get("imperial", False)),
         hide_units=args.hide_units or bool(saved.get("hide_units", False)),
-        window_duration=(
-            args.window_duration if args.window_duration is not None
-            else saved.get("window_duration", DEFAULT_WINDOW_DURATION)
-        ),
         opacity=args.opacity if args.opacity is not None else saved.get("opacity", DEFAULT_OPACITY),
         window_x=saved.get("window_x"),
         window_y=saved.get("window_y"),
@@ -123,6 +111,15 @@ LAYOUT: list[dict[str, Any]] = [
              "icon": "\U0001f525", "show_average": False},
         ],
     },
+    {
+        "row": 4,
+        "metrics": [
+            {"type": "slope", "title": "SLOPE", "default_value": "-- %", "color": "#ff6b35",
+             "icon": "⛰", "show_average": False},
+            {"type": "draft", "title": "DRAFT", "default_value": "-- %", "color": "#3a86ff",
+             "icon": "\U0001f6b4", "show_average": False},
+        ],
+    },
 ]
 
 UNITS: dict[str, str] = {
@@ -132,4 +129,6 @@ UNITS: dict[str, str] = {
     "time": "",
     "tss": "TSS",
     "calories": "CAL",
+    "slope": "%",
+    "draft": "%",
 }

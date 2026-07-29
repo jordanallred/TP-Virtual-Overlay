@@ -9,6 +9,14 @@ def test_from_raw_defaults_missing_keys():
     assert m.time_s == 0
     assert m.tss == 0
     assert m.calories == 0
+    assert m.slope == 0
+    assert m.draft == 0
+
+
+def test_from_raw_reads_slope_and_draft():
+    m = RiderMetrics.from_raw({"slope": -3.5, "draft": 42})
+    assert m.slope == -3.5
+    assert m.draft == 42
 
 
 def test_formatted_time_zero():

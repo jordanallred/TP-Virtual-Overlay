@@ -1,8 +1,8 @@
 # Cycling Overlay
 
 A draggable, always-on-top desktop overlay that displays live ride data — power,
-heart rate, cadence, speed, distance, TSS, and calories — read from
-[TrainingPeaks Virtual (TPVirtual)](https://www.trainingpeaks.com/virtual/#download)'s
+heart rate, cadence, speed, distance, TSS, calories, grade, and draft — read
+from [TrainingPeaks Virtual (TPVirtual)](https://www.trainingpeaks.com/virtual/#download)'s
 `focus.json` broadcast file. Useful for streaming or recording indoor rides with
 your stats visible on top of any window.
 
@@ -10,9 +10,9 @@ your stats visible on top of any window.
 
 ## Features
 
-- Live-updating metric cards (power, heart rate, cadence, speed, distance, time, TSS, calories)
-- Rolling power and heart rate graphs with a configurable time window
-- In-app Settings dialog (⚙ icon) for units, thresholds, opacity, and graph window —
+- Live-updating metric cards (power, heart rate, cadence, speed, distance, time,
+  TSS, calories, slope/grade, draft)
+- In-app Settings dialog (⚙ icon) for units, thresholds, and opacity —
   no command line needed
 - Optional minimum cadence/power thresholds that flash red when you fall below them
 - A LIVE / NO DATA indicator so you can tell at a glance if TPVirtual has stopped sending data
@@ -48,10 +48,10 @@ yourself — see below).
 3. The overlay appears automatically once TPVirtual starts broadcasting.
 
 The window is draggable from anywhere and can be closed with the ✕ button in the
-header. Click the ⚙ icon to configure units, cadence/power thresholds, opacity,
-and the graph time window — no command line needed; your choices are remembered
-for next time. If the window is ever lost (dragged off-screen, hidden), use the
-system tray icon's right-click menu to show it again or reset its position.
+header. Click the ⚙ icon to configure units, cadence/power thresholds, and
+opacity — no command line needed; your choices are remembered for next time.
+If the window is ever lost (dragged off-screen, hidden), use the system tray
+icon's right-click menu to show it again or reset its position.
 
 ## For developers
 
@@ -89,23 +89,22 @@ back to the last value saved from the Settings dialog (see [Settings](#settings)
 | `--min-power N` | Power turns red when below `N` watts |
 | `--imperial` | Use mph/miles instead of km/h/km |
 | `--hide-units` | Hide unit labels next to values |
-| `--window-duration N` | Seconds of history kept in the graphs (default: 300) |
 | `--opacity N` | Window opacity from 0.1 to 1.0 (default: 0.7) |
 
 Example:
 
 ```
-uv run python -m cycling_overlay --min-cadence 70 --min-power 150 --window-duration 600
+uv run python -m cycling_overlay --min-cadence 70 --min-power 150 --opacity 0.85
 ```
 
 ## Settings
 
 Click the ⚙ icon in the header to open the Settings dialog: cadence/power
-thresholds, hide-units, graph window duration, and opacity. Saving writes them
-to `settings.json` alongside the log file (see [Logs](#logs)) so they persist
-across restarts — this is what makes the packaged exe configurable without a
-command line. Window position is saved automatically whenever you drag the
-overlay, no dialog needed.
+thresholds, hide-units, and opacity. Saving writes them to `settings.json`
+alongside the log file (see [Logs](#logs)) so they persist across restarts —
+this is what makes the packaged exe configurable without a command line.
+Window position is saved automatically whenever you drag the overlay, no
+dialog needed.
 
 ## System tray
 

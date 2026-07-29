@@ -19,6 +19,8 @@ def test_generated_samples_have_expected_shape_and_ranges():
         assert row["distance"] >= 0
         assert row["tss"] >= 0
         assert row["calories"] >= 0
+        assert -8.0 <= row["slope"] <= 8.0
+        assert 0 <= row["draft"] <= 60
 
 
 def test_distance_is_monotonically_increasing():

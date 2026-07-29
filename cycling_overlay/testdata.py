@@ -30,6 +30,8 @@ def generate_random_data() -> Iterator[list[dict[str, Any]]]:
         heartrate = random.randint(120, 180)
         cadence = random.randint(70, 100)
         speed = random.randint(20000, 35000)  # mm/s (20-35 km/h)
+        slope = round(random.uniform(-8.0, 8.0), 1)
+        draft = random.randint(0, 60)
 
         distance += speed / 1000  # mm/s -> m/s, times 1 second
 
@@ -55,6 +57,8 @@ def generate_random_data() -> Iterator[list[dict[str, Any]]]:
             "avgCadence": avg_cadence,
             "tss": round(elapsed_seconds * avg_power / 3600 / 2.5),
             "calories": round(elapsed_seconds * avg_power * 3.6 / 4184),
+            "slope": slope,
+            "draft": draft,
         }]
 
         yield data

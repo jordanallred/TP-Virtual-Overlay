@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+### Changed
+- Removed the rolling power/heart-rate graphs and the "graph window duration"
+  setting that configured them, simplifying the overlay to just the metric
+  cards.
+- Added SLOPE (current grade %) and DRAFT (%) metric cards, sourced from
+  TPVirtual's `slope` and `draft` broadcast fields.
+- The window now sizes itself to however many metric rows are configured
+  instead of a fixed hand-picked height.
+
 ## 0.4.2
 
 ### Fixed

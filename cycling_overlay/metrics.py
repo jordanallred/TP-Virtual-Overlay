@@ -24,6 +24,8 @@ class RiderMetrics:
     time_s: int
     tss: float
     calories: float
+    slope: float
+    draft: float
 
     @classmethod
     def from_raw(cls, raw: dict[str, Any]) -> RiderMetrics:
@@ -39,6 +41,8 @@ class RiderMetrics:
             time_s=raw.get("time", 0),
             tss=raw.get("tss", 0),
             calories=raw.get("calories", 0),
+            slope=raw.get("slope", 0),
+            draft=raw.get("draft", 0),
         )
 
     @property

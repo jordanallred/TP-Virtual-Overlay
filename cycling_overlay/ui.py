@@ -1,4 +1,4 @@
-"""Tkinter overlay window that displays live ride metrics and rolling graphs."""
+"""Tkinter overlay window that displays live ride metrics."""
 
 from __future__ import annotations
 
@@ -37,10 +37,8 @@ TEXT_DIM = "#9090a0"
 CARD_RADIUS = 16
 CARD_INSET = 5
 CARD_HEIGHT = 134
-GRAPH_RADIUS = 12
 
 BASE_WINDOW_WIDTH = 480
-BASE_WINDOW_HEIGHT = 890
 DEFAULT_WINDOW_X = 100
 DEFAULT_WINDOW_Y = 100
 
@@ -175,11 +173,6 @@ class CyclingOverlay:
         self.hide_units = config.hide_units
         self.metric_cards: dict[str, dict[str, Any]] = {}
 
-        # Historical data for graphs (configurable window duration in seconds)
-        self.hr_history: list[float] = []
-        self.power_history: list[float] = []
-        self.max_history_points = config.window_duration
-
         self._last_update_monotonic: float | None = None
         self._is_stale = False
         self._hidden = False
@@ -187,6 +180,7 @@ class CyclingOverlay:
         self.root = tk.Tk()
         self.setup_window()
         self.create_widgets()
+        self._finalize_geometry()
 
         self.watcher = FocusFileWatcher(config.focus_file, self.schedule_update)
         self.watcher.start()
@@ -206,26 +200,34 @@ class CyclingOverlay:
         self.start_x = 0
         self.start_y = 0
 
-        # Force geometry to resolve before the first draw, otherwise the graph
-        # canvases report a 1x1 size (unmapped placeholder) and draw nothing.
-        self.root.update_idletasks()
         self.update_data()
         self._check_staleness()
         logger.info("CyclingOverlay initialization complete")
 
-    def setup_window(self) -> None:
-        self.root.title("Cycling Stats")
+    def _finalize_geometry(self) -> None:
+        self.root.update_idletasks()
 
         # winfo_fpixels("1i") reflects the monitor's real DPI once the process
         # has declared DPI awareness (see __main__._set_dpi_awareness); scaling
-        # our base pixel geometry by it keeps the window's physical on-screen
-        # size consistent across monitors instead of shrinking on scaled ones.
+        # our base pixel width by it keeps the window's physical on-screen size
+        # consistent across monitors instead of shrinking on scaled ones. Height
+        # comes from the card grid's own natural size rather than a hand-picked
+        # constant, so it always matches however many metric rows are configured.
         dpi_scale = self.root.winfo_fpixels("1i") / 96.0
         width = round(BASE_WINDOW_WIDTH * dpi_scale)
-        height = round(BASE_WINDOW_HEIGHT * dpi_scale)
+        height = self.root.winfo_reqheight()
+        self.root.geometry(f"{width}x{height}+{self.root.winfo_x()}+{self.root.winfo_y()}")
+
+    def setup_window(self) -> None:
+        self.root.title("Cycling Stats")
+
+        # Position only for now; final size is set in _finalize_geometry()
+        # once the card grid is built, so the window height always matches
+        # however many metric rows are actually configured instead of a
+        # hand-guessed constant.
         x = self.config.window_x if self.config.window_x is not None else DEFAULT_WINDOW_X
         y = self.config.window_y if self.config.window_y is not None else DEFAULT_WINDOW_Y
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        self.root.geometry(f"+{x}+{y}")
 
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", self.config.opacity)
@@ -298,10 +300,6 @@ class CyclingOverlay:
         stats_container = tk.Frame(main_frame, bg=BG_OUTER)
         stats_container.pack(fill="x", expand=False)
         self.create_dynamic_layout(stats_container)
-
-        graphs_container = tk.Frame(main_frame, bg=BG_OUTER)
-        graphs_container.pack(fill="both", expand=True, pady=(10, 0))
-        self.create_graphs(graphs_container)
 
     def create_dynamic_layout(self, parent: tk.Frame) -> None:
         for row_config in LAYOUT:
@@ -382,101 +380,6 @@ class CyclingOverlay:
             "avg": avg_label, "color": color,
         }
 
-    def create_graphs(self, parent: tk.Frame) -> None:
-        power_frame = tk.Frame(parent, bg=BG_OUTER)
-        power_frame.pack(fill="both", expand=True, padx=2, pady=(0, 6))
-
-        self.power_canvas = tk.Canvas(power_frame, bg=BG_OUTER, height=110, highlightthickness=0, bd=0)
-        self.power_canvas.pack(fill="both", expand=True)
-
-        hr_frame = tk.Frame(parent, bg=BG_OUTER)
-        hr_frame.pack(fill="both", expand=True, padx=2, pady=(0, 2))
-
-        self.hr_canvas = tk.Canvas(hr_frame, bg=BG_OUTER, height=110, highlightthickness=0, bd=0)
-        self.hr_canvas.pack(fill="both", expand=True)
-
-    def draw_graph(self, canvas: tk.Canvas, data: list[float], color: str, label: str) -> None:
-        try:
-            canvas.delete("all")
-
-            width = canvas.winfo_width()
-            height = canvas.winfo_height()
-            if width <= 1 or height <= 1:
-                return
-
-            border_color = _blend(color, BG_CARD, 0.5)
-            _draw_rounded_rect(canvas, 1, 1, width - 1, height - 1, GRAPH_RADIUS,
-                                fill=BG_CARD, outline=border_color, width=1)
-
-            top_pad, bottom_pad, side_pad = 22, 18, 10
-            plot_top = top_pad
-            plot_bottom = height - bottom_pad
-            plot_height = max(plot_bottom - plot_top, 1)
-            plot_left = side_pad
-            plot_right = width - side_pad
-
-            canvas.create_text(12, 8, text=label, fill=TEXT_MUTED, font=("Segoe UI", 8, "bold"), anchor="nw")
-
-            for fraction in (0.25, 0.5, 0.75):
-                y = plot_top + plot_height * fraction
-                canvas.create_line(plot_left, y, plot_right, y, fill=BORDER_DIM, dash=(2, 3))
-
-            if not data:
-                canvas.create_text(width // 2, (plot_top + plot_bottom) // 2, text="Waiting for data...",
-                                    fill=TEXT_MUTED, font=("Segoe UI", 9), anchor="center")
-                return
-
-            max_value = max(data) or 1
-            min_value = min(data)
-            value_range = (max_value - min_value) or 1
-
-            num_points = len(data)
-            plot_width = max(plot_right - plot_left, 1)
-            if num_points < self.max_history_points:
-                x_step = plot_width / self.max_history_points
-            else:
-                x_step = plot_width / max(num_points - 1, 1)
-
-            def to_xy(i: int, value: float) -> tuple[float, float]:
-                x = plot_left + i * x_step
-                y = plot_bottom - ((value - min_value) / value_range) * plot_height
-                return x, y
-
-            points = [to_xy(i, v) for i, v in enumerate(data)]
-
-            if len(points) > 1:
-                area = [(plot_left, plot_bottom), *points, (points[-1][0], plot_bottom)]
-                flat_area = [coord for point in area for coord in point]
-                canvas.create_polygon(flat_area, fill=_blend(color, BG_CARD, 0.22), outline="", smooth=True)
-
-                flat_line = [coord for point in points for coord in point]
-                canvas.create_line(flat_line, fill=color, width=2, smooth=True)
-
-            last_x, last_y = points[-1]
-            canvas.create_oval(last_x - 3, last_y - 3, last_x + 3, last_y + 3, fill=color, outline="")
-
-            current_value = int(data[-1])
-            badge_text = str(current_value)
-            badge_w = 14 + 8 * len(badge_text)
-            badge_x2 = plot_right
-            badge_x1 = badge_x2 - badge_w
-            _draw_rounded_rect(canvas, badge_x1, 4, badge_x2, 20, 7, fill=color, outline="")
-            canvas.create_text((badge_x1 + badge_x2) / 2, 12, text=badge_text,
-                                fill=BG_CARD, font=(MONO_FONT, 9, "bold"), anchor="center")
-
-            canvas.create_text(plot_left, height - 5, text=f"min {int(min_value)} / max {int(max_value)}",
-                                fill=TEXT_MUTED, font=("Segoe UI", 7), anchor="sw")
-
-            window_minutes = self.max_history_points // 60
-            if window_minutes > 0:
-                window_text = f"last {window_minutes}:00"
-            else:
-                window_text = f"last {self.max_history_points}s"
-            canvas.create_text(plot_right, height - 5, text=window_text,
-                                fill=TEXT_MUTED, font=("Segoe UI", 7), anchor="se")
-        except tk.TclError:
-            logger.exception("Error drawing graph")
-
     def start_drag(self, event: tk.Event) -> None:
         self.start_x = event.x_root - self.root.winfo_x()
         self.start_y = event.y_root - self.root.winfo_y()
@@ -540,13 +443,6 @@ class CyclingOverlay:
     def update_display(self, metrics: RiderMetrics) -> None:
         self._last_update_monotonic = time.monotonic()
 
-        self.power_history.append(metrics.power)
-        self.hr_history.append(metrics.heartrate)
-        if len(self.power_history) > self.max_history_points:
-            self.power_history.pop(0)
-        if len(self.hr_history) > self.max_history_points:
-            self.hr_history.pop(0)
-
         power_below_min = (
             self.min_power and metrics.power > 0 and metrics.power < self.min_power
         )
@@ -570,9 +466,8 @@ class CyclingOverlay:
         self.update_metric_value("time", metrics.formatted_time, None)
         self.update_metric_value("tss", metrics.tss, None)
         self.update_metric_value("calories", metrics.calories, None)
-
-        self.draw_graph(self.power_canvas, self.power_history, "#ffb020", "POWER")
-        self.draw_graph(self.hr_canvas, self.hr_history, "#ff4d6d", "HEART RATE")
+        self.update_metric_value("slope", metrics.slope, None)
+        self.update_metric_value("draft", metrics.draft, None)
 
     def update_metric_value(
         self, metric_type: str, value: Any, avg_value: float | None = None, color: str | None = None
@@ -607,6 +502,10 @@ class CyclingOverlay:
         if metric_type in ("speed", "distance") and isinstance(value, (int, float)):
             precision = 1 if metric_type == "speed" else 2
             formatted = f"{value:.{precision}f}"
+        elif metric_type == "slope" and isinstance(value, (int, float)):
+            formatted = f"{value:+.1f}"
+        elif metric_type == "draft" and isinstance(value, (int, float)):
+            formatted = str(round(value))
         else:
             formatted = str(value)
 
@@ -699,12 +598,6 @@ class CyclingOverlay:
             lambda row: tk.Entry(row, textvariable=power_var, **entry_kwargs).pack(fill="x", ipady=4),
         )
 
-        duration_var = tk.StringVar(value=str(self.max_history_points))
-        add_row(
-            "GRAPH WINDOW (SECONDS)",
-            lambda row: tk.Entry(row, textvariable=duration_var, **entry_kwargs).pack(fill="x", ipady=4),
-        )
-
         current_opacity = float(self.root.attributes("-alpha"))
         opacity_slider: _Slider = add_row(
             "OPACITY",
@@ -729,11 +622,8 @@ class CyclingOverlay:
             try:
                 min_cadence = int(cadence_var.get()) if cadence_var.get().strip() else None
                 min_power = int(power_var.get()) if power_var.get().strip() else None
-                window_duration = int(duration_var.get())
-                if window_duration <= 0:
-                    raise ValueError("window_duration must be positive")
             except ValueError:
-                error_label.config(text="Thresholds and window must be whole numbers (blank = off).")
+                error_label.config(text="Thresholds must be whole numbers (blank = off).")
                 return
 
             self.min_cadence = min_cadence
@@ -743,21 +633,15 @@ class CyclingOverlay:
             opacity = round(opacity_slider.value, 2)
             self.root.attributes("-alpha", opacity)
 
-            if window_duration != self.max_history_points:
-                self.max_history_points = window_duration
-                self.power_history = self.power_history[-window_duration:]
-                self.hr_history = self.hr_history[-window_duration:]
-
             save_settings({
                 "min_cadence": self.min_cadence,
                 "min_power": self.min_power,
                 "hide_units": self.hide_units,
-                "window_duration": self.max_history_points,
                 "opacity": opacity,
             })
             logger.info(
-                "Settings updated: min_cadence=%s min_power=%s hide_units=%s window_duration=%s opacity=%s",
-                self.min_cadence, self.min_power, self.hide_units, self.max_history_points, opacity,
+                "Settings updated: min_cadence=%s min_power=%s hide_units=%s opacity=%s",
+                self.min_cadence, self.min_power, self.hide_units, opacity,
             )
             self.update_data()
             dialog.destroy()

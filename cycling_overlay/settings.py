@@ -22,7 +22,7 @@ SETTINGS_FILE = app_data_dir() / "settings.json"
 # inject unexpected config.
 VALID_KEYS = (
     "min_cadence", "min_power", "imperial", "hide_units",
-    "window_duration", "opacity", "window_x", "window_y",
+    "opacity", "window_x", "window_y",
 )
 
 

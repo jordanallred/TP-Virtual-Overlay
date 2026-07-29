@@ -75,8 +75,8 @@ def main() -> None:
 
     config = parse_args()
     logger.info(
-        "Config: focus_file=%s min_cadence=%s min_power=%s imperial=%s window_duration=%s",
-        config.focus_file, config.min_cadence, config.min_power, config.imperial, config.window_duration,
+        "Config: focus_file=%s min_cadence=%s min_power=%s imperial=%s",
+        config.focus_file, config.min_cadence, config.min_power, config.imperial,
     )
 
     try:

@@ -41,9 +41,9 @@ def test_save_merges_rather_than_replaces(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_module, "SETTINGS_FILE", tmp_path / "settings.json")
 
     save_settings({"min_power": 200, "imperial": True})
-    save_settings({"window_duration": 400})
+    save_settings({"opacity": 0.4})
 
-    assert load_settings() == {"min_power": 200, "imperial": True, "window_duration": 400}
+    assert load_settings() == {"min_power": 200, "imperial": True, "opacity": 0.4}
 
 
 def test_save_creates_parent_directory(tmp_path, monkeypatch):
